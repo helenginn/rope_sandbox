@@ -1,7 +1,7 @@
-#ifndef __Blot__Image_vsh__
-#define __Blot__Image_vsh__
+#ifndef __Plot__Image_vsh__
+#define __Plot__Image_vsh__
 
-inline std::string Ensemble_vsh()
+inline std::string Ramaplot_vsh()
 {
 	std::string str = 
 	"#version 330 core\n"\
@@ -15,45 +15,57 @@ inline std::string Ensemble_vsh()
 	"uniform mat4 projection;\n"\
 	"uniform float time;\n"\
 	"\n"\
-	"out vec4 vColor;\n"\
-	"out vec4 vGlow;\n"\
 	"out vec4 vPos;\n"\
 	"out vec2 vTex;\n"\
+	"out vec4 vColor;\n"\
 	"\n"\
 	"void main()\n"\
 	"{\n"\
 	"    vec4 pos = vec4(position[0], position[1], position[2], 1.0);\n"\
-	"	 vec4 norm4 = vec4(normal[0], normal[1], normal[2], 1.0);\n"\
-	"	 pos = model * pos;\n"\
-	"	 vec3 norm3 = mat3(model) * norm4.xyz;\n"\
-	"	 vec3 lightpos = vec3(pos[0], pos[1], pos[2]);\n"\
-	"    float mag = dot(normalize(norm3), normalize(lightpos));"\
-	"    float red   = color[0] * mag;\n"
-	"    float green = color[1] * mag;\n"
-	"    float blue =  color[2] * mag;\n"
-	"    vGlow = extra;\n"\
-	"    vPos = projection * pos;\n"\
-	"    gl_Position = vPos;\n"\
-	"	 vColor = vec4(red, green, blue, color[3]);\n"\
+	"	 vPos = model * pos;\n"\
+	"    gl_Position = projection * (vPos);\n"\
+	"    gl_Position /= gl_Position.w;\n"\
+	"    gl_Position += extra / 3;\n"\
+	"    gl_Position.z = -0.1;\n"\
 	"    vTex = tex;\n"\
+	"    vColor = color;\n"\
+	"    gl_PointSize = 10;\n"\
 	"}";
 	return str;
 }
 
-inline std::string Ensemble_fsh() 
+inline std::string Ramaplot_fsh() 
 {
 	std::string str = 
 	"#version 330 core\n"\
-	"in vec4 vColor;\n"\
-	"in vec4 vGlow;\n"\
-	"in vec2 vTex;\n"\
 	"in vec4 vPos;\n"\
+	"in vec2 vTex;\n"\
 	"\n"\
 	"uniform sampler2D pic_tex;\n"\
 	"\n"\
+	"out vec4 FragColor;\n"\
+
+	"void main()\n"\
+	"{\n"\
+	"	FragColor = texture(pic_tex, vTex);\n"\
+	"}\n";
+
+	return str;
+}
+
+inline std::string Ramapoint_fsh() 
+{
+	static std::string Blob_fsh =
+	"#version 330 core\n"\
+	"in vec4 vPos;\n"\
+	"in vec3 vTex;\n"\
+	"in vec4 vColor;\n"\
+	"\n"\
+	"uniform int depth;\n"\
+	"\n"\
 	"layout (location = 0) out vec4 FragColor;\n"\
 	"layout (location = 1) out vec4 BrightColor;\n"\
-
+	"\n"\
 	"void toBright(vec4 basis)\n"\
 	"{\n"\
 	"	FragColor = basis;\n"\
@@ -69,19 +81,21 @@ inline std::string Ensemble_fsh()
 	"	}\n"\
 	"}\n"\
 
-	"\n"\
 	"void main()\n"\
 	"{\n"\
-	"	if (vColor[3] < 0.2) discard;\n"\
+	"\n"\
+	"	vec2 pos = gl_PointCoord - vec2(0.5, 0.5);\n"\
+	"	if (length(pos) > 0.5) discard;\n"\
 	"	toBright(vColor);\n"\
-	"	BrightColor += vGlow;\n"\
-	"	FragColor[3] = vColor[3];\n"\
+	"\n"\
 	"\n"\
 	"\n"\
 	"\n"\
 	"}\n";
-	return str;
+	return Blob_fsh;
 }
 
 
+
 #endif
+

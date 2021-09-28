@@ -34,6 +34,7 @@ public:
 	virtual ~Handleable() {};
 
 	virtual std::string title() = 0;
+	virtual void setTitle(std::string title) {};
 	virtual bool isVisible() = 0;
 	virtual void setVisible(bool vis) = 0;
 	virtual void giveMenu(QMenu *m, Display *d) {};
@@ -51,6 +52,16 @@ public:
 		}
 
 		return _handles[0];
+	}
+	
+	int handleCount()
+	{
+		return _handles.size();
+	}
+	
+	Handle *handle(int i)
+	{
+		return _handles[i];
 	}
 
 signals:

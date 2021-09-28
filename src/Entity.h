@@ -20,11 +20,14 @@
 #define __switch__Entity__
 
 #include <string>
+#include <algorithm>
 #include <vector>
+#include "Collective.h"
 
 class Chain;
+class Ensemble;
 
-class Entity
+class Entity : public Collective
 {
 public:
 	Entity(std::string name);
@@ -45,23 +48,40 @@ public:
 	}
 	
 	void setSequenceFromChain(Chain *c);
+	virtual std::string findChainsInEnsemble(Ensemble *e);
 
 	std::string &name()
 	{
 		return _name;
 	}
 	
+	virtual std::string title();
+	
 	void addChain(Chain *c)
 	{
+		if (_chains.size() == 0)
+		{
+			_reference = c;
+			sortReference();
+		}
 		_chains.push_back(c);
 	}
 	
-	void setVisible(bool vis);
+	bool hasChain(Chain *ch)
+	{
+		return std::find(_chains.begin(), _chains.end(), ch) != _chains.end();
+	}
+	
+	void sortReference();
+	
+	virtual void setVisible(bool vis);
 private:
 	std::string _name;
 	std::string _seq;
 	std::vector<Chain *> _chains;
+	Chain *_reference;
 	int _tolerance;
+	int _refMinRes;
 };
 
 #endif

@@ -23,6 +23,8 @@
 #include <h3dsrc/SlipGL.h>
 
 class Ensemble;
+class CAlpha;
+class Ramaplot;
 class Display;
 class Text;
 
@@ -41,10 +43,15 @@ public:
 	{
 		return _ensemble;
 	}
+
+	void makeRamaPlot(CAlpha *a);
+	void removePlot();
 protected:
 	void clickMouse(double x, double y);
 
+	virtual void mousePressEvent(QMouseEvent *e);
 	virtual void mouseReleaseEvent(QMouseEvent *e);
+	virtual void mouseMoveEvent(QMouseEvent *e);
 	virtual void initializeGL();
 private:
 	Ensemble *_ensemble;
@@ -52,6 +59,7 @@ private:
 	Text *_text;
 	vec3 _centre;
 	bool _centreSet;
+	Ramaplot *_plot;
 
 };
 

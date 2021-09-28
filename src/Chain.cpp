@@ -27,6 +27,8 @@
 #include <libsrc/Polymer.h>
 #include <libsrc/Atom.h>
 #include <libsrc/Monomer.h>
+#include <h3dsrc/Icosahedron.h>
+#include <hcsrc/Blast.h>
 #include "Ensemble_sh.h"
 
 #define DOTS_PER_BEZIER 10
@@ -34,6 +36,8 @@
 Chain::Chain(CrystalPtr crystal, std::string chain) 
 : SlipObject(), Handleable()
 {
+	_globalOffset = 0;
+	_visibilityDemand = true;
 	_entity = NULL;
 	_chain = chain;
 	_crystal = crystal;
@@ -132,12 +136,6 @@ void Chain::convertToCylinder()
 		vec3 v1 = vec_from_pos(orig[i].pos);
 		vec3 v2 = vec_from_pos(orig[i + 1].pos);
 		
-		if (!vec3_is_sane(v1) || !vec3_is_sane(v2))
-		{
-			starter = true;
-			continue;
-		}
-		
 		vec3 axis = vec3_subtract_vec3(v2, v1);
 
 		vec3_set_length(&axis, 1);
@@ -150,6 +148,11 @@ void Chain::convertToCylinder()
 		vec3 cross = vec3_cross_vec3(axis, xAxis);
 		vec3_set_length(&cross, 0.2);
 		prev_axis = axis;
+		
+		if (!vec3_is_sane(v1) || !vec3_is_sane(v2))
+		{
+//			continue;
+		}
 
 		for (size_t i = 0; i < divisions; i++)
 		{
@@ -172,6 +175,22 @@ void Chain::convertToCylinder()
 	
 	_renderType = GL_TRIANGLES;
 	calculateNormals();
+}
+
+void Chain::render(SlipGL *gl)
+{
+	if (!tryLockMutex())
+	{
+		return;
+	}
+
+	for (size_t i = 0; i < _balls.size(); i++)
+	{
+		_balls[i]->render(gl);
+	}
+	unlockMutex();
+
+	SlipObject::render(gl);
 }
 
 void Chain::convertToBezier()
@@ -233,7 +252,7 @@ void Chain::convertToBezier()
 		{
 			double t = (double)ti / 10;
 
-			if (sameBefore && ti == 0)
+			if (sameBefore)// && ti == 0)
 			{
 				addVertex(nanVec, NULL);
 			}
@@ -294,6 +313,57 @@ void Chain::addCAlpha(AtomPtr ca, vec3 point)
 	{
 		_ca2Vertex[ca] = _vertices.size();
 	}
+	
+	Icosahedron *ball = new Icosahedron();
+	ball->resize(1.5);
+
+	ball->triangulate();
+	ball->setPosition(point);
+	ball->setShadersLike(this);
+	ball->setDisabled(true);
+
+	_ball2Atom[ball] = ca;
+	_atom2Ball[ca] = ball;
+	_balls.push_back(ball);
+}
+
+CAlpha *Chain::whichAtom(double x, double y, double *z)
+{
+	AtomPtr atom = NULL;
+	
+	if (isDisabled())
+	{
+		return NULL;
+	}
+	
+	Icosahedron *ball = NULL;
+	for (size_t i = 0; i < _balls.size(); i++)
+	{
+		_balls[i]->setModel(_model);
+		_balls[i]->setProj(_proj);
+		bool covers = _balls[i]->intersectsPolygon(x, y, z);
+		if (covers)
+		{
+			ball = _balls[i];
+		}
+	}
+	
+	if (ball != NULL)
+	{
+		atom = _ball2Atom[ball];
+	}
+	
+	CAlpha *ca = _composite->getCAlpha(atom);
+	if (ca == NULL)
+	{
+		return NULL;
+	}
+	
+	std::cout << "Calpha map child has " << ca->children() << 
+	" children from ";
+	std::cout << _ensemble->title() << std::endl;
+	
+	return ca;
 }
 
 void Chain::getAlphas(Composite *c)
@@ -304,6 +374,7 @@ void Chain::getAlphas(Composite *c)
 		if (ca)
 		{
 			_caMap[_cas[i]] = ca;
+			ca->setChain(this);
 		}
 	}
 }
@@ -316,6 +387,15 @@ void Chain::repopulate(mat3x3 r, vec3 t, vec3 loc)
 	_vertices.clear();
 	_ca2Vertex.clear();
 	_cas.clear();
+	std::vector<Icosahedron *> tmp = _balls;
+	_balls.clear();
+	_ball2Atom.clear();
+	_atom2Ball.clear();
+
+	for (size_t i = 0; i < tmp.size(); i++)
+	{
+		delete tmp[i];
+	}
 
 	vec3 nanVec = make_vec3(NAN, NAN, NAN);
 
@@ -380,6 +460,16 @@ void Chain::repopulate(mat3x3 r, vec3 t, vec3 loc)
 	unlockMutex();
 }
 
+void Chain::correlationToVertex(Helen3D::Vertex &v, double cc)
+{
+	vec3 colour;
+	val_to_cluster4x_colour(cc, &colour.x, &colour.y, &colour.z);
+	vec3_mult(&colour, 2 / 255.);
+	pos_from_vec(v.color, colour);
+	vec3 empty = empty_vec3();
+	pos_from_vec(v.extra, empty);
+}
+
 void Chain::heatToVertex(Helen3D::Vertex &v, double heat)
 {
 	if (heat < 0) heat = 0;
@@ -412,7 +502,7 @@ void Chain::heatToVertex(Helen3D::Vertex &v, double heat)
 
 	double mult = heat - 1;
 	if (mult < 0) mult = 0;
-	mult *= 4;
+	mult *= 3;
 	heat = fmod(heat, 1);
 	colour_aim -= colour_start;
 	vec3_mult(&colour_aim, heat);
@@ -420,6 +510,43 @@ void Chain::heatToVertex(Helen3D::Vertex &v, double heat)
 	pos_from_vec(v.color, colour_start);
 	vec3_mult(&colour_start, mult);
 	pos_from_vec(v.extra, colour_start);
+}
+
+void Chain::correlationToCAlpha(Ensemble *ref, CAlpha *target)
+{
+	lockMutex();
+	setColour(0.4, 0.4, 0.4);
+
+	for (size_t i = 0; i < ref->cAlphaCount(); i++)
+	{
+		CAlpha *a = ref->cAlpha(i);
+		CAlpha *ca = a->getAlphaForCrystal(_crystal);
+		
+		if (!ca)
+		{
+			continue;
+		}
+
+		double cc = CAlpha::scoreBetweenAlphas(target, a, 1);
+		
+		if (cc != cc)
+		{
+			continue;
+		}
+
+		size_t start = _ca2Vertex[ca->atom()];
+
+		correlationToVertex(_vertices[start], cc);
+		Helen3D::Vertex &v = _vertices[start];
+		for (size_t j = start; j < start + _vPerAtom &&
+		     j < vertexCount(); j++)
+		{
+			memcpy(_vertices[j].color, v.color, sizeof(GLfloat) * 4);
+			memcpy(_vertices[j].extra, v.extra, sizeof(GLfloat) * 4);
+		}
+	}
+
+	unlockMutex();
 }
 
 void Chain::recolour()
@@ -454,25 +581,67 @@ void Chain::recolour()
 		heat += 1;
 		if (heat != heat) heat = 0;
 		
+		heatToVertex(_vertices[start], heat);
+		Helen3D::Vertex &v = _vertices[start];
 		for (size_t j = start; j < start + _vPerAtom &&
 		     j < vertexCount(); j++)
 		{
-			heatToVertex(_vertices[j], heat);
+			memcpy(_vertices[j].color, v.color, sizeof(GLfloat) * 4);
+			memcpy(_vertices[j].extra, v.extra, sizeof(GLfloat) * 4);
 		}
+		
+		Icosahedron *ball = _atom2Ball[_cas[i]];
+		ball->setColour(v.color[0], v.color[1], v.color[2]);
+		ball->setExtra(v.extra[0], v.extra[1], v.extra[2], 0);
+	}
+}
+
+void Chain::deselectBalls()
+{
+	for (size_t i = 0; i < _balls.size(); i++)
+	{
+		_balls[i]->setDisabled(true);
+	}
+}
+
+void Chain::selectBall(AtomPtr atom)
+{
+	CAlpha *ca = _composite->getCAlpha(atom);
+	if (ca == NULL)
+	{
+		return;
+	}
+	CAlpha *myCa = ca->getAlphaForCrystal(_crystal);
+	if (myCa == NULL)
+	{
+		return;
+	}
+
+	AtomPtr mine = myCa->atom();
+
+	if (_atom2Ball.count(mine))
+	{
+		_atom2Ball[mine]->setDisabled(false);
 	}
 }
 
 void Chain::setVisible(bool vis)
 {
-	Composite *c = _ensemble->composite();
-	bool must_hide = c->entityMustHide(_entity);
-	
-	if (must_hide)
+	if (vis && !_visibilityDemand)
 	{
 		vis = false;
 	}
 
 	setDisabled(!vis);
+
+	if (!vis)
+	{
+		for (size_t i = 0; i < _balls.size(); i++)
+		{
+			_balls[i]->setDisabled(true);
+		}
+	}
+
 	emit Handleable::changedVisible();
 }
 
@@ -497,3 +666,75 @@ void Chain::setEntity(Entity *entity)
 	_entity->addChain(this);
 	emit Handleable::changedName();
 }
+
+int Chain::offsetFromChain(Chain *chain)
+{
+	int other_min, max;
+	Ensemble *theirs = chain->ensemble();
+	theirs->minMaxResidues(chain->str(), &other_min, &max);
+
+	int my_min;
+	_ensemble->minMaxResidues(str(), &my_min, &max);
+	int diff = my_min - other_min;
+
+	std::string myseq = _ensemble->generateSequence(this);
+	std::string refseq = theirs->generateSequence(chain);
+
+	int muts, dels;
+	setup_alignment(&_a, "");
+	setup_alignment(&_b, "");
+	compare_sequences_and_alignments(refseq, myseq, &muts, &dels, _a, _b);
+	_perResOffset.clear();
+
+	std::map<int, size_t> freqs;
+	for (size_t j = 0; j < myseq.size(); j++)
+	{
+		if (_b.mask[j] == MATCHED)
+		{
+			int dir = _b.map[j] - j;
+			freqs[dir]++;
+		}
+	}
+
+	std::map<int, size_t>::iterator it;
+	size_t biggest = 0;
+	int dir = 0;
+	for (it = freqs.begin(); it != freqs.end(); it++)
+	{
+		if (it->second > biggest)
+		{
+			biggest = it->second;
+			dir = it->first;
+		}
+	}
+	
+	for (size_t j = 0; j < myseq.size(); j++)
+	{
+		if (_a.mask[j] == MATCHED)
+		{
+			int offset = j - _a.map[j];
+			chain->_perResOffset.push_back(diff - offset);
+		}
+		else
+		{
+			chain->_perResOffset.push_back(INT_MAX);
+		}
+	}
+	
+	chain->_globalOffset = my_min;
+
+	return 0;
+}
+
+int Chain::offsetForRefResidue(int i)
+{
+	i -= _globalOffset;
+	if (i < 0 || i >= _perResOffset.size()) return 0;
+	return _perResOffset[i];
+}
+
+bool Chain::belongsToCollective(Collective *c)
+{
+	return (c->hasChain(this));
+}
+

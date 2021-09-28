@@ -21,11 +21,12 @@
 #include <QObject>
 
 class MyDictator;
+class Collective;
 class Entity;
 class SVDBond;
-class FlexLocal;
-class CAlpha;
 class Display;
+class CAlpha;
+class Complex;
 
 namespace Vagabond { class Crystal; }
 typedef boost::shared_ptr<Vagabond::Crystal> CrystalPtr;
@@ -44,6 +45,7 @@ public:
 	void findCorrelations(std::string filename);
 	void loadModels(std::string list, std::string handle = "");
 	void defineEntity(std::string entity, std::string refChain);
+	void defineComplex(std::string name, std::string chains);
 	
 	void setChains(std::string chain);
 	void hideNonEntities(bool hide);
@@ -77,6 +79,16 @@ public:
 		return _name2Entity[name];
 	}
 	
+	Complex *getComplex(std::string name)
+	{
+		if (_name2Complex.count(name) == 0)
+		{
+			return NULL;
+		}
+		
+		return _name2Complex[name];
+	}
+	
 	Entity *chosenEntity()
 	{
 		return _entity;
@@ -87,14 +99,31 @@ public:
 		return _entities[i];
 	}
 	
+	Ensemble *ensembleForCrystal(CrystalPtr c)
+	{
+		if (_ensembles.count(c))
+		{
+			return _ensembles[c];
+		}
+		
+		return NULL;
+	}
+	
 	void addEnsemble(Ensemble *e);
 	
-	void selectEntity(std::string entity);
+	void selectCollective(std::string name);
 	
-	bool entityMustHide(Entity *entity);
+	void testCCA();
 	void hideEntity(std::string name);
+	void rejectOthers();
+	void defineEntity(std::string entity);
 	void torsionHeatForEnsemble(Ensemble *ref);
 	void contactHeatForEnsemble(Ensemble *e);
+	
+	Collective *collective()
+	{
+		return _collective;
+	}
 public slots:
 	void loadFromFile(QString filename, QString handle = "");
 	void vectors(QString filename);
@@ -122,10 +151,14 @@ private:
 	std::map<CrystalPtr, std::string> _filenames;
 	std::map<CrystalPtr, Ensemble *> _ensembles;
 	std::map<std::string, CrystalPtr> _f2Crystal;
+	std::map<std::string, CrystalPtr> _name2Crystal;
 
 	std::vector<CrystalPtr> _crystals;
 	std::vector<Entity *> _entities;
 	std::map<std::string, Entity *> _name2Entity;
 	std::map<Entity *, bool> _visibility;
+	Collective *_collective;
 	Entity *_entity;
+	std::vector<Complex *> _complexes;
+	std::map<std::string, Complex *> _name2Complex;
 };

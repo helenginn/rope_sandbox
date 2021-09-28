@@ -16,62 +16,50 @@
 // 
 // Please email: vagabond @ hginn.co.uk for more details.
 
-#ifndef __switch__Kabsch__
-#define __switch__Kabsch__
+#ifndef __switch__Collective__
+#define __switch__Collective__
 
 #include <boost/shared_ptr.hpp>
-#include <hcsrc/mat3x3.h>
-#include <vector>
-#include <string>
 #include <map>
+#include "Handleable.h"
 
 namespace Vagabond { class Crystal; }
 typedef boost::shared_ptr<Vagabond::Crystal> CrystalPtr;
 
-class Atom;
-typedef boost::shared_ptr<Atom> AtomPtr;
+class Chain;
+class Ensemble;
+class Composite;
 
-class Collective;
-
-class Kabsch
+class Collective : public Handleable
 {
 public:
-	Kabsch(CrystalPtr ref, CrystalPtr move);
+	Collective();
+	virtual ~Collective() {};
 	
-	vec3 getDifference(AtomPtr a);
-
-	void setCollective(Collective *c)
+	void setComposite(Composite *c)
 	{
-		_collective = c;
-	}
-	
-	const mat3x3 &rotation()
-	{
-		return _mrot;
+		_composite = c;
 	}
 	
-	const vec3 &translation()
-	{
-		return _trans;
-	}
+	virtual bool hasChain(Chain *ch) = 0;
 
-	const vec3 &target()
+	virtual std::string findChainsInEnsemble(Ensemble *e) = 0;
+	std::string findChainsInCrystal(CrystalPtr c);
+	std::string findChainInCrystal(CrystalPtr c, std::string ref);
+	int offsetForCrystalChain(CrystalPtr c, std::string ch, int residue);
+	
+	virtual bool isVisible()
 	{
-		return _target;
+		return _visible;
 	}
+protected:
+	std::map<Ensemble *, std::string> _results;
+	std::map<Chain *, int> _offsets;
+	bool _visible;
+	Ensemble *_refEnsemble;
 
-	void run();
 private:
-	bool correctChain(std::string id);
-	CrystalPtr _ref;
-	CrystalPtr _move;
-	Collective *_collective;
-
-	mat3x3 _mrot;
-	vec3 _trans;
-	vec3 _target;
-	std::map<AtomPtr, AtomPtr> _caMap;
-	std::vector<AtomPtr> _cas;
+	Composite *_composite;
 };
 
 #endif

@@ -20,16 +20,20 @@
 #define __switch__Chain__
 
 #include <h3dsrc/SlipObject.h>
+#include <hcsrc/Blast.h>
 #include "Handleable.h"
 
 namespace Vagabond { class Crystal; }
 typedef boost::shared_ptr<Vagabond::Crystal> CrystalPtr;
 
+class Icosahedron;
+class Collective;
 class Composite;
 class Ensemble;
 class Entity;
 class CAlpha;
 class Atom;
+
 typedef boost::shared_ptr<Atom> AtomPtr;
 
 class Chain : public SlipObject, public Handleable
@@ -52,6 +56,8 @@ public:
 	
 	void setEntity(Entity *entity);
 	
+	bool belongsToCollective(Collective *c);
+	
 	Entity *entity()
 	{
 		return _entity;
@@ -60,6 +66,11 @@ public:
 	std::string str()
 	{
 		return _chain;
+	}
+	
+	Ensemble *ensemble()
+	{
+		return _ensemble;
 	}
 	
 	void setSequence(std::string seq)
@@ -72,12 +83,36 @@ public:
 		return _sequence;
 	}
 	
+	void setHide(bool val)
+	{
+		_visibilityDemand = !val;
+	}
+	
 	virtual bool isVisible()
 	{
 		return !isDisabled();
 	}
 	
+	void setComposite(Composite *comp)
+	{
+		_composite = comp;
+	}
+	
+	int offsetFromChain(Chain *c);
+	CAlpha *whichAtom(double x, double y, double *z);
+	
 	virtual void setVisible(bool vis);
+	virtual void render(SlipGL *gl);
+	void deselectBalls();
+	void selectBall(AtomPtr atom);
+	void correlationToCAlpha(Ensemble *ref, CAlpha *target);
+	
+	size_t offsetCount()
+	{
+		return _perResOffset.size();
+	}
+
+	int offsetForRefResidue(int i);
 private:
 	void convertToCylinder();
 	void addCircle(vec3 centre, std::vector<vec3> &circle);
@@ -85,17 +120,27 @@ private:
 	void convertToBezier();
 	void addCAlpha(AtomPtr ca, vec3 point);
 	void heatToVertex(Helen3D::Vertex &v, double heat);
+	void correlationToVertex(Helen3D::Vertex &v, double cc);
 
 	std::string _chain;
 	std::string _sequence;
+	/* from reference to my sequence */
+	std::vector<int> _perResOffset;
+	int _globalOffset;
 	Entity *_entity;
+	Composite *_composite;
 	CrystalPtr _crystal;
 	Ensemble *_ensemble;
 
+	Alignment _a, _b;
 	int _vPerAtom;
 	std::map<AtomPtr, CAlpha *> _caMap;
 	std::vector<AtomPtr> _cas;
 	std::map<AtomPtr, size_t> _ca2Vertex;
+	std::map<Icosahedron *, AtomPtr> _ball2Atom;
+	std::map<AtomPtr, Icosahedron *> _atom2Ball;
+	bool _visibilityDemand;
+	std::vector<Icosahedron *> _balls;
 };
 
 #endif

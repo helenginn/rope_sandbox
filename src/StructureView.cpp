@@ -17,7 +17,11 @@
 // Please email: vagabond @ hginn.co.uk for more details.
 
 #include <iostream>
+#include "Ramaplot.h"
+#include "CAlpha.h"
+#include <libsrc/Atom.h>
 #include <QMenu>
+#include <QTreeWidget>
 #include <h3dsrc/Text.h>
 #include <hcsrc/FileReader.h>
 #include "StructureView.h"
@@ -26,6 +30,7 @@
 
 StructureView::StructureView(QWidget *parent) : SlipGL(parent, true)
 {
+	_plot = NULL;
 	_centreSet = false;
 	setBackground(1, 1, 1, 1);
 	setZFar(2000.);
@@ -70,13 +75,42 @@ void StructureView::addEnsemble(Ensemble *e)
 
 void StructureView::clickMouse(double x, double y)
 {
-	if (_ensemble != NULL)
+	Ensemble *e = _display->activeEnsemble();
+
+	if (e != NULL)
 	{
+		CAlpha *atom = e->whichAtom(x, y);
+		if (!atom)
+		{
+			return;
+		}
+		std::cout << "Selected atom: " << atom->atom()->shortDesc() << std::endl;
 	}
 }
 
 void StructureView::mouseReleaseEvent(QMouseEvent *e)
 {
+	removePlot();
+
+	SlipGL::mouseReleaseEvent(e);
+}
+
+void StructureView::mouseMoveEvent(QMouseEvent *e)
+{
+	if (_plot == NULL)
+	{
+		SlipGL::mouseMoveEvent(e);
+		return;
+	}
+
+	double x = e->x(); double y = e->y();
+	convertCoords(&x, &y);
+	_plot->processMovedToPoint(make_vec3(x, y, 0));
+}
+
+void StructureView::mousePressEvent(QMouseEvent *e)
+{
+	setCursor(Qt::CrossCursor);
 	if (!_moving && e->button() == Qt::LeftButton)
 	{
 		double x = e->x(); double y = e->y();
@@ -91,5 +125,28 @@ void StructureView::mouseReleaseEvent(QMouseEvent *e)
 	}
 	*/
 
-	SlipGL::mouseReleaseEvent(e);
+	SlipGL::mousePressEvent(e);
+}
+
+void StructureView::removePlot()
+{
+	if (_plot != NULL)
+	{
+		removeObject(_plot);
+		delete _plot;
+		_plot = NULL;
+	}
+}
+
+void StructureView::makeRamaPlot(CAlpha *a)
+{
+	removePlot();
+
+	Ramaplot *plot = new Ramaplot(a);
+	addObject(plot, false);
+	_plot = plot;
+	
+	Ensemble *e = _display->activeEnsemble();
+	
+	_plot->loadFromAtomForEnsemble(e);
 }

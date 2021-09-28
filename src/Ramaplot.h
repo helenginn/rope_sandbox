@@ -16,43 +16,31 @@
 // 
 // Please email: vagabond @ hginn.co.uk for more details.
 
-#ifndef __switch__Handle__
-#define __switch__Handle__
+#ifndef __switch__Ramaplot__
+#define __switch__Ramaplot__
 
-#include <QTreeWidgetItem>
+#include <h3dsrc/SlipObject.h>
 
-class Handleable;
-class Display;
-class QMenu;
+class Ramapoint;
+class Ensemble;
+class CAlpha;
 
-class Handle : public QObject, public QTreeWidgetItem
+class Ramaplot : public SlipObject
 {
-Q_OBJECT
 public:
-	Handle(Handleable *object, Handle *parent);
-	void setData(int column, int role, const QVariant &value);
-	
-	Handleable *object()
-	{
-		return _object;
-	}
-	
-	void makeEditable();
-	
-	virtual ~Handle();
+	Ramaplot(CAlpha *a);
+	~Ramaplot();
 
-	void updateVisible();
-	void giveMenu(QMenu *m, Display *d);
-signals:
-	void done();
-public slots:
-	void getTitle();
-	void getVisible();
+	void loadFromAtomForEnsemble(Ensemble *e);
+	void bestContacts(Ensemble *e);
+	void processMovedToPoint(vec3 pos);
 protected:
-	void updateText();
-
+	virtual void bindTextures();
+	virtual void render(SlipGL *gl);
 private:
-	Handleable *_object;
+	Ramapoint *_points;
+	CAlpha *_alpha;
+	std::vector<Ensemble *> _extra;
 
 };
 

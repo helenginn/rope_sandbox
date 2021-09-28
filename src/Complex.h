@@ -16,44 +16,44 @@
 // 
 // Please email: vagabond @ hginn.co.uk for more details.
 
-#ifndef __switch__Handle__
-#define __switch__Handle__
+#ifndef __switch__Complex__
+#define __switch__Complex__
 
-#include <QTreeWidgetItem>
+#include <string>
+#include <vector>
+#include <hcsrc/vec3.h>
+#include "Collective.h"
 
-class Handleable;
-class Display;
-class QMenu;
+class Ensemble;
+class Chain;
+class Entity;
 
-class Handle : public QObject, public QTreeWidgetItem
+class Complex : public Collective
 {
-Q_OBJECT
 public:
-	Handle(Handleable *object, Handle *parent);
-	void setData(int column, int role, const QVariant &value);
+	Complex(std::string name);
+
+	void provideExample(Ensemble *e, std::string chains);
+	virtual std::string findChainsInEnsemble(Ensemble *e);
 	
-	Handleable *object()
+	virtual std::string title()
 	{
-		return _object;
+		return _name;
 	}
 	
-	void makeEditable();
+	virtual bool hasChain(Chain *ch);
 	
-	virtual ~Handle();
-
-	void updateVisible();
-	void giveMenu(QMenu *m, Display *d);
-signals:
-	void done();
-public slots:
-	void getTitle();
-	void getVisible();
-protected:
-	void updateText();
-
+	virtual void setVisible(bool);
 private:
-	Handleable *_object;
-
+	std::string _name;
+	/** Just reference chains for nominal example */
+	std::vector<Chain *> _chains;
+	std::vector<Entity *> _entities;
+	std::vector<vec3> _positions;
+	std::vector<int> _defaultOffsets;
+	
+	/** all chains across all instances of complex */
+	std::vector<Chain *> _members;
 };
 
 #endif

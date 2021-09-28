@@ -14,4 +14,3 @@ fi
 
 sed "s/_version_commit_/${check_version}${check_commit}/g" $1 > $2
 
-

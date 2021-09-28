@@ -22,6 +22,8 @@
 #include <boost/shared_ptr.hpp>
 #include <map>
 #include <vector>
+#include <hcsrc/vec3.h>
+#include "Chain.h"
 
 class Atom; typedef boost::shared_ptr<Atom> AtomPtr;
 class AtomGroup; typedef boost::shared_ptr<AtomGroup> AtomGroupPtr;
@@ -45,7 +47,7 @@ public:
 		return _crystal2Alpha[c];
 	}
 	
-	static double scoreBetweenAlphas(CAlpha *a, CAlpha *b);
+	static double scoreBetweenAlphas(CAlpha *a, CAlpha *b, int type = 0);
 	
 	std::string displayName();
 	
@@ -111,6 +113,31 @@ public:
 	{
 		return _alphas.size() > 0;
 	}
+	
+	size_t alphaCount()
+	{
+		return _alphas.size();
+	}
+	
+	void setOffset(vec3 off)
+	{
+		_offset = off;
+	}
+	
+	vec3 &offset()
+	{
+		return _offset;
+	}
+	
+	Chain *chain()
+	{
+		return _chain;
+	}
+	
+	void setChain(Chain *c)
+	{
+		_chain = c;
+	}
 private:
 	double fraction();
 	AtomPtr _ca;
@@ -126,10 +153,12 @@ private:
 	double _heat;
 	double _myHeat;
 
+	Chain *_chain;
 	AtomGroupPtr _close;
 	std::map<CrystalPtr, CAlpha *> _crystal2Alpha;
 	std::vector<CAlpha *> _alphas;
 	std::vector<CrystalPtr> _crystals;
+	vec3 _offset;
 };
 
 #endif

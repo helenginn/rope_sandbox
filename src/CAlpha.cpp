@@ -25,12 +25,15 @@
 #include <libsrc/Polymer.h>
 #include <libsrc/Whack.h>
 #include <hcsrc/FileReader.h>
+#include <hcsrc/Canonical.h>
 
 CAlpha::CAlpha(AtomPtr ca, CrystalPtr c)
 {
+	_chain = NULL;
 	_ca = ca;
 	_c = c;
 	_heat = 0;
+	_offset = empty_vec3();
 
 	BondPtr parent = ToBondPtr(ca->getModel());
 	_parent = parent;
@@ -87,10 +90,14 @@ void CAlpha::calculateAverages()
 	_psi /= count;
 }
 
-double CAlpha::scoreBetweenAlphas(CAlpha *a, CAlpha *b)
+double CAlpha::scoreBetweenAlphas(CAlpha *a, CAlpha *b, int type)
 {
 	double dots = 0;
-	double amps = 0;
+	std::vector<double> ms, ns;
+
+	int msize = 0;
+	int nsize = 0;
+	int count = 0;
 
 	for (size_t i = 0; i < a->_crystals.size(); i++)
 	{
@@ -110,15 +117,66 @@ double CAlpha::scoreBetweenAlphas(CAlpha *a, CAlpha *b)
 		
 		double aphi = ca->deltaPhi(a);
 		double apsi = ca->deltaPsi(a);
+		vec3 offset = ca->offset();
+		if (type == 0 || type == 1)
+		{
+			ms.push_back(aphi);
+			ms.push_back(apsi);
+			msize = 2;
+		}
+		else
+		{
+			ms.push_back(offset.x);
+			ms.push_back(offset.y);
+			ms.push_back(offset.z);
+			msize = 3;
+		}
 
 		double bphi = cb->deltaPhi(b);
 		double bpsi = cb->deltaPsi(b);
-		
-		dots += aphi * bphi + apsi * bpsi;
-		amps += aphi * apsi + bphi * bpsi;
-	}
+		offset = cb->offset();
+		if (type == 0)
+		{
+			ns.push_back(bphi);
+			ns.push_back(bpsi);
+			nsize = 2;
+		}
+		else
+		{
+			ns.push_back(offset.x);
+			ns.push_back(offset.y);
+			ns.push_back(offset.z);
+			nsize = 3;
+		}
 
-	return (dots);
+		count++;
+	}
+	
+	if (count < 6)
+	{
+		return 0;
+	}
+	
+	if (ns.size() == 0 || ms.size() == 0)
+	{
+		return 0;
+	}
+	
+	Canonical c(nsize, msize);
+	c.addVecs(ns, ms);
+	
+	try
+	{
+		c.run();
+	}
+	catch (int e)
+	{
+		return 0;
+	}
+	
+	double cc = c.correlation();
+
+	return (cc);
 }
 
 std::string CAlpha::displayName()
@@ -142,17 +200,29 @@ void CAlpha::contactHeat(AtomGroupPtr cas)
 {
 	_heat = 0;
 	_myHeat = 0;
+
 	if (!cas)
 	{
-		AtomList atoms = _c->findAtoms("CA");
 		cas = AtomGroupPtr(new AtomGroup());
-		cas->addAtomsFrom(atoms);
 		cas->setTop(_c);
+		for (size_t i = 0; i < _c->atomCount(); i++)
+		{
+			if (_c->atom(i)->isHeteroAtom() && !_c->atom(i)->isWater())
+			{
+				cas->addAtom(_c->atom(i));
+			}
+		}
+
+		_close = cas;
+	}
+	else
+	{
+		_close = cas;
 	}
 
 	if (!children())
 	{
-		const double min = 10.;
+		const double min = 5.;
 		vec3 pos = _ca->getAbsolutePosition();
 
 		AtomGroupPtr al;
@@ -173,15 +243,28 @@ void CAlpha::contactHeat(AtomGroupPtr cas)
 
 			if (at->getChainID()[0] == _ca->getChainID()[0])
 			{
-				continue;
+//				continue;
 			}
 
-			double dist = at->getDistanceFrom(&*_ca);
-			double add = exp(-(dist) / (2 * min));
+			double dist = _ca->getDistanceFrom(&*at);
+			double add = exp(-(dist * dist) / (2 * min * min));
+
+			if (add != add || add < 1e-6)
+			{
+				continue;
+			}
 
 			_heat += add;
 			_myHeat += add;
 		}
+
+		if (_heat != _heat || !std::isfinite(_heat))
+		{
+			_myHeat = 0;
+			_heat = 0;
+		}
+
+		return;
 	}
 	
 	for (size_t i = 0; i < _alphas.size(); i++)
@@ -189,6 +272,21 @@ void CAlpha::contactHeat(AtomGroupPtr cas)
 		_alphas[i]->contactHeat();
 		_heat += _alphas[i]->heat();
 	}
+
+	_heat /= (double)alphaCount();
+
+	double sq = 0;
+	for (size_t i = 0; i < _alphas.size(); i++)
+	{
+		_alphas[i]->_myHeat -= _heat;
+		double h = _alphas[i]->_myHeat;
+		if (h > 0)
+		{
+			sq += h * h;
+		}
+	}
+	
+//	_heat = sqrt(sq) / (double)alphaCount();
 
 	for (size_t i = 0; i < _alphas.size(); i++)
 	{

@@ -43,18 +43,34 @@ Display::Display(QWidget *parent) : QMainWindow(parent)
 	QWidget *central = new QWidget(this);
 	central->setLayout(hbox);
 	
-	_viewTree = new QTreeWidget(NULL);
-	_viewTree->setMinimumSize(250, 0);
-	_viewTree->setMaximumSize(350, 2000);
-	_viewTree->setHeaderLabel("Structures");
-	_viewTree->setContextMenuPolicy(Qt::CustomContextMenu);
-	_viewTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+	QVBoxLayout *vbox = new QVBoxLayout();
+	{
+		_entiTree = new QTreeWidget(NULL);
+		_entiTree->setMinimumSize(250, 0);
+		_entiTree->setMaximumSize(350, 2000);
+		_entiTree->setHeaderLabel("Collections");
+		_entiTree->setContextMenuPolicy(Qt::CustomContextMenu);
+		_entiTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+		connect(_entiTree, &QTreeWidget::itemClicked, 
+		        this, &Display::itemWasClicked);
+		vbox->addWidget(_entiTree);
+	}
 
-	connect(_viewTree, &QTreeWidget::customContextMenuRequested,
-	        this, &Display::ensembleMenu);
-	connect(_viewTree, &QTreeWidget::itemClicked, 
-	        this, &Display::itemWasClicked);
-	hbox->addWidget(_viewTree);
+	{
+		_viewTree = new QTreeWidget(NULL);
+		_viewTree->setMinimumSize(250, 0);
+		_viewTree->setMaximumSize(350, 2000);
+		_viewTree->setHeaderLabel("Structures");
+		_viewTree->setContextMenuPolicy(Qt::CustomContextMenu);
+		_viewTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+
+		connect(_viewTree, &QTreeWidget::customContextMenuRequested,
+		        this, &Display::ensembleMenu);
+		connect(_viewTree, &QTreeWidget::itemClicked, 
+		        this, &Display::itemWasClicked);
+		vbox->addWidget(_viewTree);
+	}
+	hbox->addLayout(vbox);
 
 	_structureView = new StructureView(NULL);
 	_structureView->setMinimumSize(500, 500);
@@ -136,7 +152,7 @@ void Display::colourEnsembles()
 void Display::ensembleMenu(const QPoint &p)
 {
 	QMenu *m = new QMenu();
-	QPoint pos = centralWidget()->mapToGlobal(p);
+	QPoint pos = _viewTree->mapToGlobal(p);
 
 	if (_viewTree->selectedItems().size() > 1)
 	{
@@ -151,6 +167,33 @@ void Display::ensembleMenu(const QPoint &p)
 	m->exec(pos);
 }
 
+void Display::addCollective(Collective *e)
+{
+	Handle *h = new Handle(e, NULL);
+	h->moveToThread(_worker);
+	_entiTree->addTopLevelItem(h);
+}
+
+void Display::clusterAtoms(Ensemble *e)
+{
+	if (_screen != NULL)
+	{
+		_screen->hide();
+		_screen->deleteLater();
+	}
+	
+	_composite->setReferenceTorsions(e);
+
+	_screen = new Screen(NULL);
+	_screen->setWindowTitle("cluster4x - rope");
+	_last = e;
+	
+	e->prepareCluster4xPerAtom(_screen);
+	_screen->addCSVSwitcher();
+
+	_screen->show();
+}
+
 void Display::cluster(Ensemble *e)
 {
 	if (_screen != NULL)
@@ -162,11 +205,12 @@ void Display::cluster(Ensemble *e)
 	_composite->setReferenceTorsions(e);
 
 	_screen = new Screen(NULL);
-	_screen->setWindowTitle("cluster4x - splitseq");
+	_screen->setWindowTitle("cluster4x - rope");
 	_screen->setReturnJourney(this);
 	_last = e;
 	
 	e->prepareCluster4x(_screen);
+	_screen->addCSVSwitcher();
 
 	_screen->show();
 }
@@ -184,7 +228,7 @@ void Display::finished()
 			continue;
 		}
 
-		std::string def = "Split: " + _last->name();
+		std::string def = "Split: " + _last->title();
 		std::string custom = g->getCustomName();
 		if (custom.length())
 		{
@@ -209,4 +253,37 @@ void Display::finished()
 	}
 	
 	_screen->hide();
+}
+
+void Display::removeEnsemble(Ensemble *e)
+{
+	Handleable *he = static_cast<Handleable *>(e);
+	for (size_t i = 1; i < _viewTree->topLevelItemCount(); i++)
+	{
+		Handle *h = static_cast<Handle *>(_viewTree->topLevelItem(i));
+		if (h->object() == he)
+		{
+			_viewTree->takeTopLevelItem(i);
+		}
+	}
+}
+
+Ensemble *Display::activeEnsemble()
+{
+	QTreeWidgetItem *item = viewTree()->currentItem();
+	Handle *h = static_cast<Handle *>(item);
+	Ensemble *e = NULL;
+	if (h != NULL)
+	{
+		e = dynamic_cast<Ensemble *>(h->object());
+	}
+
+	if (e == NULL && _ensembles.size())
+	{
+		e = _ensembles[0];
+	}
+
+	_composite->setReferenceTorsions(e);
+
+	return e;
 }

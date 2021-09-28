@@ -33,6 +33,12 @@ Handle::Handle(Handleable *object, Handle *parent)
 	connect(object, &Handleable::changedVisible, this, &Handle::getVisible);
 }
 
+Handle::~Handle()
+{
+	disconnect(_object, &Handleable::changedName, this, &Handle::getTitle);
+	disconnect(_object, &Handleable::changedVisible, this, &Handle::getVisible);
+}
+
 void Handle::getTitle()
 {
 	std::string title = _object->title();
@@ -63,4 +69,25 @@ void Handle::giveMenu(QMenu *m, Display *d)
 {
 	_object->giveMenu(m, d);
 
+}
+
+void Handle::makeEditable()
+{
+	Qt::ItemFlags fl = flags();
+	setFlags(fl | Qt::ItemIsEditable);
+}
+
+void Handle::setData(int column, int role, const QVariant &value)
+{
+	std::string newTitle = object()->title();
+	if (role == Qt::EditRole)
+	{
+		newTitle = value.toString().toStdString();
+	}
+	
+	object()->setTitle(newTitle);
+
+	QTreeWidgetItem::setData(column, role, value);
+
+	return;
 }

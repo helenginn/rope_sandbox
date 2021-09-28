@@ -13,9 +13,15 @@ vagabond = dependency('libvag')
 cc = meson.get_compiler('c')
 m_dep = cc.find_library('m', required : false)
 
+pkgdatadir = join_paths(get_option('datadir'), 'rope')
+install_subdir('images', install_dir : pkgdatadir)
+
+conf = configuration_data()
+conf.set_quoted('DATA_PREFIX', join_paths(get_option('prefix'), pkgdatadir))
+configure_file(output: 'paths.h', configuration: conf)
+
 # Run the version and hash generator
 hash_script = find_program('get_hash.sh')
-
 gen_src = custom_target('commit-output',
                         input : ['src/commit.h.pre'],
                         output : ['commit.h'],
@@ -40,6 +46,8 @@ moc_files = qt5.preprocess(moc_headers : [
 executable('switch', gen_src, moc_files,
 'src/CAlpha.cpp', 
 'src/Chain.cpp', 
+'src/Complex.cpp', 
+'src/Collective.cpp', 
 'src/Composite.cpp', 
 'src/Display.cpp', 
 'src/Ensemble.cpp', 
@@ -49,6 +57,8 @@ executable('switch', gen_src, moc_files,
 'src/Kabsch.cpp', 
 'src/MyDictator.cpp', 
 'src/StructureView.cpp', 
+'src/Ramaplot.cpp', 
+'src/Ramapoint.cpp', 
 'src/main.cpp', 
 cpp_args: ['-std=c++11'], dependencies : [ 
 qt5_dep, 

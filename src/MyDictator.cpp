@@ -89,10 +89,16 @@ bool MyDictator::processRequest(std::string first, std::string last)
 		to_lower(bits[0]);
 		_composite->defineEntity(bits[0], bits[1]);
 	}
-	else if (first == "select-entity")
+	else if (first == "define-complex")
+	{
+		std::vector<std::string> bits = split(last, ',');
+		to_lower(bits[0]);
+		_composite->defineComplex(bits[0], bits[1]);
+	}
+	else if (first == "select-entity" || first == "select")
 	{
 		to_lower(last);
-		_composite->selectEntity(last);
+		_composite->selectCollective(last);
 	}
 	else if (first == "chain")
 	{
@@ -113,6 +119,10 @@ bool MyDictator::processRequest(std::string first, std::string last)
 	else if (first == "hide-non-entities")
 	{
 		_composite->hideNonEntities(true);
+	}
+	else if (first == "reject-others")
+	{
+		_composite->rejectOthers();
 	}
 	else if (first == "hide-entity")
 	{
@@ -150,6 +160,10 @@ bool MyDictator::processRequest(std::string first, std::string last)
 	else if (first == "torsion-correlations")
 	{
 		_composite->findCorrelations(last);
+	}
+	else if (first == "test-cca")
+	{
+		_composite->testCCA();
 	}
 	else if (first == "write-pdb")
 	{

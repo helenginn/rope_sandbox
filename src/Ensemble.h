@@ -32,7 +32,6 @@ class AveCSV;
 class Screen;
 class Display;
 class Composite;
-class Icosahedron;
 
 class Atom; typedef boost::shared_ptr<Atom> AtomPtr;
 class AtomGroup; typedef boost::shared_ptr<AtomGroup> AtomGroupPtr;
@@ -54,7 +53,7 @@ class Ensemble : public SlipObject, public Handleable
 {
 public:
 	Ensemble(Ensemble *parent, CrystalPtr c);
-	
+
 	void setDisplay(Display *d)
 	{
 		_display = d;
@@ -71,6 +70,15 @@ public:
 	{
 		return _chains[i];
 	}
+	
+	Chain *chain(std::string ch)
+	{
+		if (_str2Chain.count(ch) == 0)
+		{
+			return NULL;
+		}
+		return _str2Chain[ch];
+	}
 
 	CrystalPtr crystal()
 	{
@@ -85,6 +93,7 @@ public:
 	void repopulate();
 	void recolour();
 	virtual std::string title();
+	virtual void setTitle(std::string title);
 	vec3 averagePos();
 	
 	Ensemble *ensemble(std::string name)
@@ -118,12 +127,7 @@ public:
 	
 	std::string chainForEntity(Entity *entity, int i);
 	
-	void addEnsemble(Ensemble *e)
-	{
-		_ensembles.push_back(e);
-		_nameMap[e->name()] = e;
-		emit changedName();
-	}
+	void addEnsemble(Ensemble *e);
 	
 	void changeEnsembleName(Ensemble *e, std::string before,
 	                        std::string after);
@@ -147,6 +151,7 @@ public:
 	                              bool onlyBlank = false);
 
 	AveCSV *prepareCluster4x(Screen *scr);
+	void prepareCluster4xPerAtom(Screen *scr);
 	
 	void takeEntityDefinition(std::string bit);
 	
@@ -181,8 +186,9 @@ public:
 	
 	virtual void giveMenu(QMenu *m, Display *d);
 	
-	void defineEntity(Entity *entity);
+	void defineEntity(Entity *entity, bool force = false);
 	double torsionSimilarity(Ensemble *other, Ensemble *ref);
+	double atomSimilarity(Ensemble *other, Ensemble *ref);
 	double heatSimilarity(Ensemble *other, Ensemble *ref);
 	double sequenceSimilarity(Ensemble *other);
 	void chainsToHandle(Handle *h);
@@ -195,18 +201,23 @@ public:
 	{
 		return _cas;
 	}
+	
+	std::string chainString();
+	CAlpha *whichAtom(double x, double y);
+	void deselectBalls();
+	void selectBall(AtomPtr atom);
+	void rejectNonEntities();
 private:
+	int mutationsForEntity(Ensemble *other, Entity *ent);
+
 	std::vector<Text *> _texts;
 	std::vector<Ensemble *> _ensembles;
 	Ensemble *_parent;
-	std::map<Icosahedron *, std::string> _ballMap;
 	std::map<AtomPtr, Text *> _textMap;
 	std::map<int, std::vector<std::string> > _muts;
 	
 	mat3x3 _rot;
 	vec3 _trans, _target;
-	
-	Icosahedron *_selected;
 
 	void findChains();
 	CrystalPtr _crystal;
@@ -222,6 +233,7 @@ private:
 	std::map<Entity *, std::vector<std::string> > _entity2Chain;
 	std::map<std::string, Chain *> _str2Chain;
 	std::map<std::string, Ensemble *> _nameMap;
+	CAlpha *_selectedAtom;
 };
 
 #endif

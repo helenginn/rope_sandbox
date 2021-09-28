@@ -16,43 +16,24 @@
 // 
 // Please email: vagabond @ hginn.co.uk for more details.
 
-#ifndef __switch__Handle__
-#define __switch__Handle__
+#ifndef __switch__Ramapoint__
+#define __switch__Ramapoint__
 
-#include <QTreeWidgetItem>
+#include <h3dsrc/SlipObject.h>
 
-class Handleable;
-class Display;
-class QMenu;
+class Ensemble;
 
-class Handle : public QObject, public QTreeWidgetItem
+class Ramapoint : public SlipObject
 {
-Q_OBJECT
 public:
-	Handle(Handleable *object, Handle *parent);
-	void setData(int column, int role, const QVariant &value);
-	
-	Handleable *object()
-	{
-		return _object;
-	}
-	
-	void makeEditable();
-	
-	virtual ~Handle();
+	Ramapoint(vec3 centre);
 
-	void updateVisible();
-	void giveMenu(QMenu *m, Display *d);
-signals:
-	void done();
-public slots:
-	void getTitle();
-	void getVisible();
-protected:
-	void updateText();
-
+	void addPoint(Ensemble *e, vec3 pos);
+	void processMovedToPoint(vec3 pos);
+	void tidyUp();
 private:
-	Handleable *_object;
+	vec3 _centre;
+	std::vector<Ensemble *> _ensembles;
 
 };
 

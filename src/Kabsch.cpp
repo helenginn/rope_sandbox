@@ -17,6 +17,7 @@
 // Please email: vagabond @ hginn.co.uk for more details.
 
 #include "Kabsch.h"
+#include "Collective.h"
 #include <libica/svdcmp.h>
 #include <libsrc/Crystal.h>
 #include <libsrc/Polymer.h>
@@ -27,6 +28,7 @@ Kabsch::Kabsch(CrystalPtr ref, CrystalPtr move)
 {
 	_ref = ref;
 	_move = move;
+	_collective = NULL;
 	_trans = empty_vec3();
 	_mrot = make_mat3x3();
 	_target = empty_vec3();
@@ -34,6 +36,12 @@ Kabsch::Kabsch(CrystalPtr ref, CrystalPtr move)
 
 void Kabsch::run()
 {
+	std::string refChain, moveChain;
+	if (_collective)
+	{
+		refChain = _collective->findChainsInCrystal(_ref);
+		moveChain = _collective->findChainsInCrystal(_move);
+	}
 	vec3 refCentre = empty_vec3();
 	vec3 moveCentre = empty_vec3();
 	double count = 0;
@@ -43,16 +51,16 @@ void Kabsch::run()
 
 	for (size_t i = 0; i < _ref->moleculeCount(); i++)
 	{
-		std::string id = _ref->molecule(i)->getChainID();
-		if (id.substr(0, _refChain.length()) != _refChain)
+		char id = _ref->molecule(i)->getChainID()[0];
+		std::string::iterator it;
+		it = std::find(refChain.begin(), refChain.end(), id);
+		
+		if (it == refChain.end() && refChain.length())
 		{
 			continue;
 		}
-		
-		if (_refChain.length())
-		{
-			id = _moveChain;
-		}
+
+		std::string rel;
 
 		if (!_ref->molecule(i)->isPolymer())
 		{
@@ -73,9 +81,20 @@ void Kabsch::run()
 			{
 				continue;
 			}
+
+			int offset = 0;
 			int resi = a->getResidueNum();
+
+			if (refChain.length())
+			{
+				size_t pos = it - refChain.begin();
+				rel = moveChain[pos];
+				offset = _collective->offsetForCrystalChain(_move, rel, resi);
+			}
 			
-			AtomList list = moveCas->findAtoms("CA", resi, id);
+			resi -= offset;
+			
+			AtomList list = moveCas->findAtoms("CA", resi, rel);
 
 			if (list.size() == 0)
 			{
@@ -93,6 +112,7 @@ void Kabsch::run()
 			}
 			
 			_caMap[a] = b;
+			_caMap[b] = a;
 			_cas.push_back(a);
 			
 			refCentre += aAbs;
@@ -100,7 +120,7 @@ void Kabsch::run()
 			count++;
 		}
 	}
-	
+
 	if (count == 0)
 	{
 		return;
@@ -147,6 +167,7 @@ void Kabsch::run()
 
 	if (!success)
 	{
+		free(vals);
 		free(ptrs);
 		free(vVals);
 		free(vPtrs);
@@ -181,9 +202,27 @@ void Kabsch::run()
 		_mrot.vals[i] = rotvals[i];
 	}
 	
+	free(vals);
 	free(ptrs);
 	free(vVals);
 	free(vPtrs);
 	free(rotvals);
 	free(rot);
+}
+
+vec3 Kabsch::getDifference(AtomPtr a)
+{
+	if (_caMap.count(a) == 0)
+	{
+		return empty_vec3();
+	}
+
+	AtomPtr ref = _caMap[a];
+	vec3 pos = ref->getAbsolutePosition();
+	pos -= _target;
+	mat3x3_mult_vec(_mrot, &pos);
+	pos += _trans;
+	pos -= a->getAbsolutePosition();
+
+	return pos;
 }

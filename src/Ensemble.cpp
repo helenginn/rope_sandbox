@@ -17,6 +17,7 @@
 // Please email: vagabond @ hginn.co.uk for more details.
 
 #include "Ensemble.h"
+#include "StructureView.h"
 #include "Entity.h"
 #include "Display.h"
 #include "Chain.h"
@@ -30,12 +31,16 @@
 #include <libsrc/Absolute.h>
 #include <c4xsrc/ClusterList.h>
 #include <c4xsrc/AveCSV.h>
+#include <c4xsrc/AveVectors.h>
+#include <c4xsrc/MtzFile.h>
+#include <c4xsrc/QuickAtoms.h>
 #include <c4xsrc/Group.h>
-#include <h3dsrc/Icosahedron.h>
 #include <h3dsrc/Text.h>
+#include <h3dsrc/Dictator.h>
 #include <iostream>
 #include <algorithm>
 #include <QMenu>
+#include <sstream>
 #include <libsrc/Polymer.h>
 #include <libsrc/Monomer.h>
 #include <libsrc/Atom.h>
@@ -60,7 +65,6 @@ Ensemble::Ensemble(Ensemble *parent, CrystalPtr c) : SlipObject(), Handleable()
 	{
 		_parent->addEnsemble(this);
 	}
-	_selected = NULL;
 	_renderType = GL_LINES;
 	_isReference = false;
 	findChains();
@@ -106,7 +110,7 @@ std::string Ensemble::generateSequence(Chain *chain, int *minRes)
 	}
 
 	std::map<int, std::string> resMap;
-	AtomList atoms = _crystal->findAtoms("CA", INT_MAX, chain->str());
+	AtomList atoms = _cas->findAtoms("CA", INT_MAX, chain->str());
 	
 	int min = INT_MAX;
 	int max = -INT_MAX;
@@ -235,7 +239,7 @@ void Ensemble::minMaxResidues(std::string ch, int *min, int *max)
 			{
 				*min = p->monomerBegin();
 			}
-			else if (p->monomerEnd() > *max)
+			else if ((int)p->monomerEnd() > *max)
 			{
 				*max = p->monomerEnd();
 			}
@@ -281,6 +285,7 @@ void Ensemble::repopulate()
 	for (size_t i = 0; i < _chains.size(); i++)
 	{
 		_chains[i]->repopulate(_rot, _trans, _target);
+		_chains[i]->setComposite(_composite);
 		_chains[i]->getAlphas(_composite);
 		_chains[i]->recolour();
 	}
@@ -404,6 +409,20 @@ void Ensemble::applyKabsch(Kabsch *k)
 	_rot = mat3x3_transpose(_rot);
 	_trans = k->translation();
 	_target = k->target();
+	
+	for (size_t i = 0; i < _cas->atomCount(); i++)
+	{
+		AtomPtr atom = _cas->atom(i);
+		CAlpha *ca = _composite->getCAlpha(atom);
+		if (ca == NULL)
+		{
+			continue;
+		}
+
+		vec3 diff = k->getDifference(atom);
+		ca->setOffset(diff);
+	}
+
 	repopulate();
 }
 
@@ -424,7 +443,7 @@ void Ensemble::setEntityAsChain(Entity *entity, std::string chain)
 	{
 		_str2Chain[chain]->setEntity(entity);
 		
-		if (entity->sequence().length())
+		if (entity->sequence().length() == 0)
 		{
 			entity->setSequenceFromChain(_str2Chain[chain]);
 		}
@@ -438,20 +457,46 @@ Handle *Ensemble::duplicateHandle()
 	return dup;
 }
 
-double Ensemble::sequenceSimilarity(Ensemble *other)
+int Ensemble::mutationsForEntity(Ensemble *other, Entity *ent)
 {
-	Entity *current = _composite->chosenEntity();
-
-	Chain *myChain = chainObjectForEntity(current, 0);
+	Chain *myChain = chainObjectForEntity(ent, 0);
+	if (myChain == NULL)
+	{
+		return 0;
+	}
 	std::string myseq = myChain->sequence();
 
-	Chain *herChain = other->chainObjectForEntity(current, 0);
+	Chain *herChain = other->chainObjectForEntity(ent, 0);
+	if (herChain == NULL)
+	{
+		return 0;
+	}
 	std::string herseq = herChain->sequence();
 
 	int muts, dels;
 	compare_sequences(myseq, herseq, &muts, &dels);
 
-	return (double)muts / 20.;
+	return (double)muts;
+
+}
+
+double Ensemble::sequenceSimilarity(Ensemble *other)
+{
+	Entity *current = _composite->chosenEntity();
+	if (current)
+	{
+		return mutationsForEntity(other, current);
+	}
+
+	double val = 0;
+	for (size_t i = 0; i < _composite->entityCount(); i++)
+	{
+		Entity *e = _composite->entity(i);
+
+		val += mutationsForEntity(other, e);
+	}
+	
+	return val / 20;
 }
 
 double Ensemble::heatSimilarity(Ensemble *other, Ensemble *ref)
@@ -474,8 +519,45 @@ double Ensemble::heatSimilarity(Ensemble *other, Ensemble *ref)
 
 		add_to_CD(&cd, aHeat, bHeat);
 	}
+	
+	double cc = evaluate_CD(cd);
+	
+	if (cc != cc || !std::isfinite(cc))
+	{
+		cc = 0;
+	}
 
-	return evaluate_CD(cd);
+	return cc;
+
+}
+
+double Ensemble::atomSimilarity(Ensemble *other, Ensemble *ref)
+{
+	double sum  = 0;
+	double amp1 = 0;
+	double amp2 = 0;
+	
+	for (int i = 0; i < ref->cAlphaCount(); i++)
+	{
+		CAlpha *r = ref->cAlpha(i);
+		CAlpha *ca = r->getAlphaForCrystal(crystal());
+		CAlpha *cb = r->getAlphaForCrystal(other->crystal());
+
+		if (!ca || !cb || !r)
+		{
+			continue;
+		}
+
+		vec3 aPos = ca->offset();
+		vec3 bPos = cb->offset();
+
+		sum += vec3_dot_vec3(aPos, bPos);
+		amp1 += vec3_sqlength(aPos);
+		amp2 += vec3_sqlength(bPos);
+
+	}
+
+	return sum / sqrt(amp1 * amp2);
 
 }
 
@@ -507,17 +589,67 @@ double Ensemble::torsionSimilarity(Ensemble *other, Ensemble *ref)
 	return evaluate_CD(cd);
 }
 
+void Ensemble::prepareCluster4xPerAtom(Screen *scr)
+{
+	_composite->setReferenceTorsions(this);
+	std::cout << "cluster4x for " << title() << std::endl;
+	AveCSV *csv = new AveCSV(NULL, "");
+	AveCSV::clear();
+	ClusterList *list = scr->getList();
+	csv->setList(list);
+	if (csv->csvCount() < 4)
+	{
+		csv->startNewCSV("torsion vs torsion");
+		csv->startNewCSV("torsion vs offset");
+		csv->startNewCSV("offset vs torsion");
+		csv->startNewCSV("offset vs offset");
+	}
+//	Dictator::setValueForKey("stdev", "false");
+
+	int total = 0;
+	for (size_t i = 0; i < cAlphaCount(); i++)
+	{
+		CAlpha *iRef = cAlpha(i);
+		for (size_t j = 0; j < cAlphaCount(); j++)
+		{
+			CAlpha *jRef = cAlpha(j);
+
+			double tt = CAlpha::scoreBetweenAlphas(iRef, jRef, 0);
+			double to = CAlpha::scoreBetweenAlphas(iRef, jRef, 1);
+			double oo = CAlpha::scoreBetweenAlphas(iRef, jRef, 2);
+			
+			csv->setChosen(0);
+			csv->addValue(iRef->displayName(), jRef->displayName(), tt);
+			csv->setChosen(1);
+			csv->addValue(iRef->displayName(), jRef->displayName(), to);
+			csv->setChosen(2);
+			csv->addValue(jRef->displayName(), iRef->displayName(), to);
+			csv->setChosen(3);
+			csv->addValue(iRef->displayName(), jRef->displayName(), oo);
+		}
+	}
+
+	std::cout << "Total " << total << " comparisons." << std::endl;
+
+	csv->preparePaths();
+	csv->setChosen(0);
+
+	Group *top = Group::topGroup();
+	top->setCustomName(title());
+	top->updateText();
+	top->useAverageType(AveComma);
+}
+
 AveCSV *Ensemble::prepareCluster4x(Screen *scr)
 {
 	std::cout << "cluster4x for " << title() << std::endl;
 	AveCSV *csv = new AveCSV(NULL, "");
+	AveCSV::clear();
 	ClusterList *list = scr->getList();
 	csv->setList(list);
-	if (csv->csvCount() == 0)
+	if (csv->csvCount() < 1)
 	{
-		csv->startNewCSV("torsions");
-		csv->startNewCSV("heat");
-		csv->startNewCSV("sequence");
+		csv->startNewCSV("atoms");
 	}
 
 	int total = 0;
@@ -525,19 +657,12 @@ AveCSV *Ensemble::prepareCluster4x(Screen *scr)
 	{
 		for (size_t j = i + 1; j < ensembleCount(); j++)
 		{
-			double cc = _ensembles[i]->torsionSimilarity(_ensembles[j], this);
+			double atom = _ensembles[i]->atomSimilarity(_ensembles[j], this);
 			double heat = _ensembles[i]->heatSimilarity(_ensembles[j], this);
-			double seq = _ensembles[i]->sequenceSimilarity(_ensembles[j]);
 			
 			csv->setChosen(0);
-			csv->addValue(_ensembles[i]->name(), _ensembles[j]->name(), cc);
-			csv->addValue(_ensembles[j]->name(), _ensembles[i]->name(), cc);
-			csv->setChosen(1);
 			csv->addValue(_ensembles[i]->name(), _ensembles[j]->name(), heat);
 			csv->addValue(_ensembles[j]->name(), _ensembles[i]->name(), heat);
-			csv->setChosen(2);
-			csv->addValue(_ensembles[j]->name(), _ensembles[i]->name(), seq);
-			csv->addValue(_ensembles[i]->name(), _ensembles[j]->name(), seq);
 			total++;
 		}
 	}
@@ -548,9 +673,60 @@ AveCSV *Ensemble::prepareCluster4x(Screen *scr)
 	csv->setChosen(0);
 
 	Group *top = Group::topGroup();
-	top->setCustomName(name());
+	top->setCustomName(title());
 	top->updateText();
 	
+	AveVectors *vecs = new AveVectors(top);
+	list->setVectorList(vecs);
+	vecs->setList(list);
+
+	for (size_t i = 0; i < ensembleCount(); i++)
+	{
+		std::vector<double> torsions;
+		Ensemble *e = _ensembles[i];
+		
+		MtzFile *file = top->getMtzFile(i);
+		if (file == NULL)
+		{
+			continue;
+		}
+
+		QuickAtoms *atoms = file->getQuickAtoms();
+		
+		for (size_t j = 0; j < cAlphaCount(); j++)
+		{
+			CAlpha *r = cAlpha(j);
+			CAlpha *ca = r->getAlphaForCrystal(e->crystal());
+			
+			if (i == 0)
+			{
+				vecs->addTitle(ca->displayName() + "_phi");
+				vecs->addTitle(ca->displayName() + "_psi");
+			}
+			
+			if (ca == NULL || r == NULL)
+			{
+				torsions.push_back(NAN);
+				torsions.push_back(NAN);
+				continue;
+			}
+			
+			double rPhi = ca->phi();
+			double rPsi = ca->psi();
+			
+			torsions.push_back(rPhi);
+			torsions.push_back(rPsi);
+
+			vec3 wip = ca->offset();
+			std::string chain;
+			chain += r->atom()->getChainID()[0];
+			atoms->addSequentialAtom(chain, wip);
+		}
+		
+		vecs->setVector(e->name(), torsions);
+	}
+	
+	top->useAverageType(AveVec);
 	return csv;
 }
 
@@ -558,12 +734,20 @@ void Ensemble::giveMenu(QMenu *m, Display *d)
 {
 	if (ensembleCount() > 1)
 	{
-		QAction *a = m->addAction("cluster4x");
+		QAction *a = m->addAction("cluster4x (structures)");
 		connect(a, &QAction::triggered, [=]{ d->cluster(this); });
+		a = m->addAction("cluster4x (atoms)");
+		connect(a, &QAction::triggered, [=]{ d->clusterAtoms(this); });
 		a = m->addAction("Torsion heat");
 		connect(a, &QAction::triggered, [=]{ torsionHeat(); });
 		a = m->addAction("Contact heat");
 		connect(a, &QAction::triggered, [=]{ contactHeat(); });
+		
+		if (!_isReference)
+		{
+			a = m->addAction("Remove group");
+			connect(a, &QAction::triggered, [=]{ d->removeEnsemble(this); });
+		}
 	}
 }
 
@@ -584,8 +768,11 @@ void Ensemble::changeEnsembleName(Ensemble *e, std::string before,
 	_nameMap[after] = e;
 }
 
-void Ensemble::defineEntity(Entity *entity)
+void Ensemble::defineEntity(Entity *entity, bool force)
 {
+	int best_mut = INT_MAX;
+	bool done = false;
+	Chain *chosen = NULL;
 	for (size_t i = 0; i < chainCount(); i++)
 	{
 		if (chain(i)->entity() != NULL)
@@ -602,9 +789,20 @@ void Ensemble::defineEntity(Entity *entity)
 		if (muts < entity->tolerance())
 		{
 			setEntityAsChain(entity, chain(i)->str());
+			done = true;
+		}
+		
+		if (muts < best_mut)
+		{
+			best_mut = muts;
+			chosen = chain(i);
 		}
 	}
-
+	
+	if (!done && chosen != NULL && force)
+	{
+		setEntityAsChain(entity, chosen->str());
+	}
 }
 
 void Ensemble::takeEntityDefinition(std::string contents)
@@ -621,10 +819,15 @@ void Ensemble::takeEntityDefinition(std::string contents)
 	}
 
 	Entity *entity = _composite->entity(lines[0]);
-	std::vector<std::string> chains = split(lines[1], ';');
+	std::vector<std::string> chains = split(lines[1], ',');
 	
 	for (size_t i = 0; i < chains.size(); i++)
 	{
+		if (entity == NULL)
+		{
+			_composite->defineEntity(lines[0]);
+			entity = _composite->entity(lines[0]);
+		}
 		std::cout << entity->name() << " " << chains[i] << std::endl;
 		setEntityAsChain(entity, chains[i]);
 	}
@@ -650,4 +853,122 @@ std::string Ensemble::chainForEntity(Entity *entity, int i)
 	}
 
 	return _entity2Chain[entity][i];
+}
+
+void Ensemble::deselectBalls()
+{
+	for (size_t i = 0; i < _ensembles.size(); i++)
+	{
+		_ensembles[i]->deselectBalls();
+	}
+
+	for (size_t i = 0; i < _chains.size(); i++)
+	{
+		_chains[i]->deselectBalls();
+	}
+	
+	_display->structureView()->removePlot();
+}
+
+void Ensemble::selectBall(AtomPtr atom)
+{
+	for (size_t i = 0; i < _ensembles.size(); i++)
+	{
+		_ensembles[i]->selectBall(atom);
+	}
+
+	for (size_t i = 0; i < _chains.size(); i++)
+	{
+		_chains[i]->selectBall(atom);
+	}
+}
+
+CAlpha *Ensemble::whichAtom(double x, double y)
+{
+	std::cout << title() << std::endl;
+	CAlpha *atom = NULL;
+	double z = -FLT_MAX;
+
+	for (size_t i = 0; i < _chains.size(); i++)
+	{
+		if (!_chains[i]->isVisible())
+		{
+			continue;
+		}
+
+		_chains[i]->setModel(_model);
+		_chains[i]->setProj(_proj);
+		CAlpha *tmp = _chains[i]->whichAtom(x, y, &z);
+		if (tmp != NULL)
+		{
+			atom = tmp;
+		}
+	}
+	
+	if (!atom)
+	{
+		deselectBalls();
+	}
+	else
+	{
+		if (_selectedAtom == atom)
+		{
+			_display->structureView()->makeRamaPlot(atom);
+		}
+
+		selectBall(atom->atom());
+
+		_selectedAtom = atom;
+	}
+	
+	return atom;
+}
+
+std::string Ensemble::chainString()
+{
+	std::ostringstream ss;
+	
+	for (size_t i = 0; i < chainCount(); i++)
+	{
+		ss << chain(i)->str();
+	}
+	
+	return ss.str();
+}
+
+void Ensemble::rejectNonEntities()
+{
+	Entity *reject = _composite->entity("reject");
+	if (reject == NULL)
+	{
+		_composite->defineEntity("reject");
+		reject = _composite->entity("reject");
+	}
+	for (size_t i = 0; i < _chains.size(); i++)
+	{
+		if (_chains[i]->entity() == NULL)
+		{
+			setEntityAsChain(reject, _chains[i]->str());
+		}
+	}
+}
+
+void Ensemble::addEnsemble(Ensemble *e)
+{
+	_ensembles.push_back(e);
+	_nameMap[e->name()] = e;
+	
+	firstHandle()->makeEditable();
+
+	emit changedName();
+}
+
+void Ensemble::setTitle(std::string title)
+{
+	std::string old = name();
+	SlipObject::setName(title);
+	if (_parent)
+	{
+		_parent->changeEnsembleName(this, old, title);
+	}
 }

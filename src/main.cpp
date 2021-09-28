@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include "MyDictator.h"
+#include "Composite.h"
 #include <iostream>
 #include <QApplication>
 #include <QOpenGLContext>

@@ -27,6 +27,7 @@ namespace Vagabond { class Crystal; }
 typedef boost::shared_ptr<Vagabond::Crystal> CrystalPtr;
 
 class Screen;
+class Collective;
 class Ensemble;
 class Composite;
 class QTreeWidget;
@@ -43,6 +44,7 @@ public:
 	                     Ensemble *parent = NULL);
 	void refreshEnsembles();
 	void colourEnsembles();
+	void addCollective(Collective *e);
 	
 	void setComposite(Composite *c)
 	{
@@ -53,8 +55,17 @@ public:
 	{
 		return _viewTree;
 	}
+	
+	StructureView *structureView()
+	{
+		return _structureView;
+	}
+	
+	Ensemble *activeEnsemble();
 
 	void cluster(Ensemble *e);
+	void clusterAtoms(Ensemble *e);
+	void removeEnsemble(Ensemble *e);
 	virtual void finished();
 protected slots:
 	void itemWasClicked(QTreeWidgetItem *item, int column);
@@ -66,6 +77,7 @@ private:
 
 	QThread *_worker;
 	QTreeWidget *_viewTree;
+	QTreeWidget *_entiTree;
 	Screen *_screen;
 	Composite *_composite;
 };
