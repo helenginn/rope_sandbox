@@ -26,6 +26,7 @@
 #include <QMenu>
 #include <QThread>
 #include <QVBoxLayout>
+#include <QTabWidget>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <libsrc/Crystal.h>
@@ -38,29 +39,32 @@ Display::Display(QWidget *parent) : QMainWindow(parent)
 	_composite = NULL;
 	_last = NULL;
 	_screen = NULL;
+	_treeTabs = NULL;
 	_worker = new QThread();
 	QHBoxLayout *hbox = new QHBoxLayout();
 	QWidget *central = new QWidget(this);
 	central->setLayout(hbox);
 	
 	QVBoxLayout *vbox = new QVBoxLayout();
+
+	_treeTabs = new QTabWidget(NULL);
+	vbox->addWidget(_treeTabs);
+	_treeTabs->setMinimumSize(250, 0);
+	_treeTabs->setMaximumSize(350, 2000);
+
 	{
 		_entiTree = new QTreeWidget(NULL);
-		_entiTree->setMinimumSize(250, 0);
-		_entiTree->setMaximumSize(350, 2000);
 		_entiTree->setHeaderLabel("Collections");
 		_entiTree->setContextMenuPolicy(Qt::CustomContextMenu);
 		_entiTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
 		connect(_entiTree, &QTreeWidget::itemClicked, 
 		        this, &Display::itemWasClicked);
-		vbox->addWidget(_entiTree);
+		_treeTabs->addTab(_entiTree, "Entities");
 	}
 
 	{
 		_viewTree = new QTreeWidget(NULL);
-		_viewTree->setMinimumSize(250, 0);
-		_viewTree->setMaximumSize(350, 2000);
-		_viewTree->setHeaderLabel("Structures");
+		_viewTree->setHeaderLabel("Models");
 		_viewTree->setContextMenuPolicy(Qt::CustomContextMenu);
 		_viewTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
 
@@ -68,8 +72,28 @@ Display::Display(QWidget *parent) : QMainWindow(parent)
 		        this, &Display::ensembleMenu);
 		connect(_viewTree, &QTreeWidget::itemClicked, 
 		        this, &Display::itemWasClicked);
-		vbox->addWidget(_viewTree);
+		_treeTabs->addTab(_viewTree, "Models");
 	}
+
+	/*
+	{
+		_viewTree = new QTreeWidget(NULL);
+		_viewTree->setMinimumSize(250, 0);
+		_viewTree->setMaximumSize(350, 2000);
+		_viewTree->setHeaderLabel("Models");
+		_viewTree->setContextMenuPolicy(Qt::CustomContextMenu);
+		_viewTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+
+		connect(_viewTree, &QTreeWidget::customContextMenuRequested,
+		        this, &Display::ensembleMenu);
+		connect(_viewTree, &QTreeWidget::itemClicked, 
+		        this, &Display::itemWasClicked);
+		_treeTabs->addTab(_viewTree, "Models");
+	}
+	*/
+
+	hbox->addLayout(vbox);
+
 	hbox->addLayout(vbox);
 
 	_structureView = new StructureView(NULL);

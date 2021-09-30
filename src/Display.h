@@ -76,6 +76,7 @@ private:
 	Ensemble *_last;
 
 	QThread *_worker;
+	QTabWidget *_treeTabs;
 	QTreeWidget *_viewTree;
 	QTreeWidget *_entiTree;
 	Screen *_screen;
